@@ -288,9 +288,10 @@ class TournamentManagerApp:
         # Create scoring panel window
         scoring_window = tk.Toplevel(match_window)
         scoring_window.title(f"Scoring Panel: {selected_match}")
+        scoring_window.geometry("600x600")  # Set window size
 
         # Initialize toss_winner_combobox before using it
-        self.toss_winner_combobox = tk.StringVar()  # Initialize the combobox variable
+        self.toss_winner_combobox = tk.StringVar()
 
         # Display live score
         self.team1_score = 0
@@ -298,251 +299,147 @@ class TournamentManagerApp:
         self.current_overs = 0
         self.current_balls = 0
 
-        self.score_label = tk.Label(scoring_window, text="Score: 0/0 Overs: 0.0")
-        self.score_label.pack(pady=10)
+        score_frame = tk.Frame(scoring_window)
+        score_frame.pack(pady=10)
 
-        # Label for toss winner
-        tk.Label(scoring_window, text="Select Toss Winner:").pack(pady=5)
+        self.score_label = tk.Label(score_frame, text="Score: 0/0 Overs: 0.0", font=("Arial", 16))
+        self.score_label.pack()
 
-        # Dropdown for toss winner
+        # Toss Section
+        toss_frame = tk.Frame(scoring_window)
+        toss_frame.pack(pady=10, fill=tk.X)
+
+        tk.Label(toss_frame, text="Select Toss Winner:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
+
         teams = [matches[match_index][1], matches[match_index][2]]
-        toss_winner_dropdown = tk.OptionMenu(scoring_window, self.toss_winner_combobox, *teams)
-        toss_winner_dropdown.pack(pady=5)
-
-        # Label and radiobuttons for toss decision
-        tk.Label(scoring_window, text="Choose Toss Decision:").pack(pady=5)
+        toss_winner_dropdown = tk.OptionMenu(toss_frame, self.toss_winner_combobox, *teams)
+        toss_winner_dropdown.pack(side=tk.LEFT, padx=5)
 
         self.toss_decision = tk.StringVar()
-        tk.Radiobutton(scoring_window, text="Bat", variable=self.toss_decision, value="Bat").pack(anchor=tk.W)
-        tk.Radiobutton(scoring_window, text="Bowl", variable=self.toss_decision, value="Bowl").pack(anchor=tk.W)
+        tk.Label(toss_frame, text="Decision:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
+        tk.Radiobutton(toss_frame, text="Bat", variable=self.toss_decision, value="Bat").pack(side=tk.LEFT)
+        tk.Radiobutton(toss_frame, text="Bowl", variable=self.toss_decision, value="Bowl").pack(side=tk.LEFT)
 
-        # Save Toss Details Button
-        self.save_toss_button = tk.Button(
-            scoring_window, text="Save Toss Details",
-            command=lambda: self.save_toss_details(match_id)
-        )
-        self.save_toss_button.pack(pady=10)
+        tk.Button(
+            toss_frame, text="Save Toss Details",
+            command=lambda: self.save_toss_details(match_id),
+            bg="green", fg="white"
+        ).pack(side=tk.LEFT, padx=10)
 
-        # Player list for score updates
+        # Player and Score Input Section
+        input_frame = tk.Frame(scoring_window)
+        input_frame.pack(pady=10, fill=tk.X)
+
+        tk.Label(input_frame, text="Select Player:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
+
         conn = sqlite3.connect('tournament_manager.db')
         cursor = conn.cursor()
-
-        # Get players from both teams
         cursor.execute("""
-        SELECT players.id, players.name, teams.name 
-        FROM players 
-        JOIN teams ON players.team_id = teams.id
-        WHERE teams.id IN (
-            SELECT team1_id FROM matches WHERE id = ?
-            UNION
-            SELECT team2_id FROM matches WHERE id = ?
-        )
+            SELECT players.id, players.name, teams.name 
+            FROM players 
+            JOIN teams ON players.team_id = teams.id
+            WHERE teams.id IN (
+                SELECT team1_id FROM matches WHERE id = ?
+                UNION
+                SELECT team2_id FROM matches WHERE id = ?
+            )
         """, (match_id, match_id))
         players = cursor.fetchall()
         conn.close()
 
         self.player_combobox = tk.StringVar()
-        player_dropdown = tk.OptionMenu(scoring_window, self.player_combobox, *[f"{player[1]} ({player[2]})" for player in players])
-        player_dropdown.pack(pady=10)
+        player_dropdown = tk.OptionMenu(input_frame, self.player_combobox, *[f"{player[1]} ({player[2]})" for player in players])
+        player_dropdown.pack(side=tk.LEFT, padx=5)
 
-        # Input fields for runs and wickets
-        tk.Label(scoring_window, text="Add Runs:").pack()
-        self.runs_entry = tk.Entry(scoring_window)
-        self.runs_entry.pack(pady=5)
+        # Input for runs, wickets, extras
+        runs_frame = tk.Frame(scoring_window)
+        runs_frame.pack(pady=5, fill=tk.X)
 
-        tk.Label(scoring_window, text="Add Wickets:").pack()
-        self.wickets_entry = tk.Entry(scoring_window)
-        self.wickets_entry.pack(pady=5)
+        tk.Label(runs_frame, text="Runs:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
+        self.runs_entry = tk.Entry(runs_frame, width=5)
+        self.runs_entry.pack(side=tk.LEFT, padx=5)
 
-        # Buttons to update score
-        self.add_score_button = tk.Button(scoring_window, text="Update Score", command=lambda: self.update_score(match_id, players))
-        self.add_score_button.pack(pady=10)
+        tk.Label(runs_frame, text="Wickets:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
+        self.wickets_entry = tk.Entry(runs_frame, width=5)
+        self.wickets_entry.pack(side=tk.LEFT, padx=5)
+
+        tk.Label(runs_frame, text="Extras:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
+        self.extras_entry = tk.Entry(runs_frame, width=5)
+        self.extras_entry.pack(side=tk.LEFT, padx=5)
+
+        # Buttons to update scores
+        action_frame = tk.Frame(scoring_window)
+        action_frame.pack(pady=10, fill=tk.X)
+
+        tk.Button(action_frame, text="Update Runs", command=lambda: self.update_score(match_id, players, "runs"), bg="blue", fg="white").pack(side=tk.LEFT, padx=10)
+        tk.Button(action_frame, text="Update Wickets", command=lambda: self.update_score(match_id, players, "wickets"), bg="red", fg="white").pack(side=tk.LEFT, padx=10)
+        tk.Button(action_frame, text="Add Extras", command=lambda: self.update_score(match_id, players, "extras"), bg="orange", fg="black").pack(side=tk.LEFT, padx=10)
 
         # Live scorecard display
-        self.scorecard_text = tk.Text(scoring_window, height=15, width=50)
+        scorecard_frame = tk.Frame(scoring_window)
+        scorecard_frame.pack(pady=10, fill=tk.BOTH, expand=True)
+
+        tk.Label(scorecard_frame, text="Live Scorecard:", font=("Arial", 14)).pack(pady=5)
+
+        self.scorecard_text = tk.Text(scorecard_frame, height=15, width=60)
         self.scorecard_text.pack(pady=10)
 
         self.update_scorecard_display(match_id)
-
-        # Check if toss details are already saved
-        conn = sqlite3.connect('tournament_manager.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT toss_winner_team_id, toss_decision FROM matches WHERE id = ?", (match_id,))
-        toss_details = cursor.fetchone()
-        conn.close()
-
-        if toss_details and toss_details[0]:
-            # Reopen the connection and fetch toss details
+    
+        def update_scorecard_display(self, match_id):
+            """
+            Update the scorecard display for the given match.
+            """
             conn = sqlite3.connect('tournament_manager.db')
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM teams WHERE id = ?", (toss_details[0],))
-            toss_winner_team_name = cursor.fetchone()[0]
-            conn.close()
-
-            tk.Label(scoring_window, text=f"Toss Winner: {toss_winner_team_name}, Elected to {toss_details[1]}").pack(pady=5)
-
-
-    def save_toss_details(self, match_id):
-        toss_winner = self.toss_winner_combobox.get()
-        toss_decision = self.toss_decision.get()
-
-        if not toss_winner or not toss_decision:
-            messagebox.showerror("Error", "Please select toss winner and decision!")
-            return
-
-        conn = sqlite3.connect('tournament_manager.db')
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT id FROM teams WHERE name = ?", (toss_winner,))
-        toss_winner_team_id = cursor.fetchone()[0]
-
-        cursor.execute("UPDATE matches SET toss_winner_team_id = ?, toss_decision = ? WHERE id = ?", (toss_winner_team_id, toss_decision, match_id))
-        conn.commit()
-        conn.close()
-
-        messagebox.showinfo("Success", "Toss details saved successfully!")
-        def update_score(self, match_id, players):
-            player_name = self.player_combobox.get()
-            runs = self.runs_entry.get()
-            wickets = self.wickets_entry.get()
-
-            if not player_name or not runs or not wickets:
-                messagebox.showerror("Error", "Please fill all fields!")
-                return
-
-            # Find player ID
-            player_index = [f"{player[1]} ({player[2]})" for player in players].index(player_name)
-            player_id = players[player_index][0]
-
-            conn = sqlite3.connect('tournament_manager.db')
-            cursor = conn.cursor()
-
-            # Insert the score data into the database
-            cursor.execute("INSERT INTO scores (match_id, player_id, runs, wickets) VALUES (?, ?, ?, ?)", 
-                           (match_id, player_id, int(runs), int(wickets)))
-            conn.commit()
-
-            # Update team total scores
             cursor.execute("""
-            UPDATE teams 
-            SET total_runs = (SELECT SUM(runs) FROM scores WHERE match_id = ? AND player_id IN 
-                              (SELECT id FROM players WHERE team_id IN (SELECT id FROM teams WHERE match_id = ?)))
-            WHERE id = ?
-            """, (match_id, match_id, team_id))
-
-            conn.commit()
+                SELECT players.name, score_details.runs, score_details.wickets, score_details.extras
+                FROM score_details
+                JOIN players ON score_details.player_id = players.id
+                WHERE score_details.match_id = ?
+            """, (match_id,))
+            score_details = cursor.fetchall()
             conn.close()
+    
+            self.scorecard_text.delete(1.0, tk.END)
+            for detail in score_details:
+                self.scorecard_text.insert(tk.END, f"{detail[0]} - Runs: {detail[1]}, Wickets: {detail[2]}, Extras: {detail[3]}\n")
 
-            # Refresh the scorecard display
+    def update_score(self, match_id, players, update_type):
+        """
+        Update the score for the match based on input type (runs, wickets, or extras).
+        """
+        try:
+            if update_type == "runs":
+                runs = int(self.runs_entry.get())
+                self.team1_score += runs
+                self.scorecard_text.insert(tk.END, f"Updated {runs} runs for {self.player_combobox.get()}.\n")
+            elif update_type == "wickets":
+                wickets = int(self.wickets_entry.get())
+                self.scorecard_text.insert(tk.END, f"Recorded {wickets} wickets for {self.player_combobox.get()}.\n")
+            elif update_type == "extras":
+                extras = int(self.extras_entry.get())
+                self.team1_score += extras
+                self.scorecard_text.insert(tk.END, f"Added {extras} extras.\n")
+
+            # Update overs
+            self.current_balls += 1
+            if self.current_balls == 6:
+                self.current_overs += 1
+                self.current_balls = 0
+
+            # Update the score display
+            self.score_label.config(text=f"Score: {self.team1_score}/{self.current_overs}.{self.current_balls}")
             self.update_scorecard_display(match_id)
 
-            messagebox.showinfo("Success", "Score updated successfully!")
+        except ValueError:
+            messagebox.showerror("Error", "Invalid input! Please enter numeric values.")
 
+        # Clear input fields
+        self.runs_entry.delete(0, tk.END)
+        self.wickets_entry.delete(0, tk.END)
+        self.extras_entry.delete(0, tk.END)
 
-    def update_scorecard_display(self, match_id):
-        self.scorecard_text.delete(1.0, tk.END)
-
-        conn = sqlite3.connect('tournament_manager.db')
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        SELECT players.name, scores.runs, scores.balls, scores.wickets
-        FROM scores
-        JOIN players ON scores.player_id = players.id
-        WHERE scores.match_id = ?
-        """, (match_id,))
-        scores = cursor.fetchall()
-        conn.close()
-
-        # Display the scorecard for each player
-        for score in scores:
-            self.scorecard_text.insert(tk.END, f"Player: {score[0]} Runs: {score[1]} Balls: {score[2]} Wickets: {score[3]}\n")
-
-
-    def view_scores(self, match_id):
-        """
-        View scores for a specific match.
-
-        Args:
-            match_id (int): ID of the match.
-        """
-        try:
-            conn = sqlite3.connect('tournament_manager.db')
-            cursor = conn.cursor()
-
-            cursor.execute("""
-            SELECT players.name, scores.runs, scores.balls, scores.wickets
-            FROM scores
-            JOIN players ON scores.player_id = players.id
-            WHERE scores.match_id = ?
-            """, (match_id,))
-            scores = cursor.fetchall()
-
-            conn.close()
-
-            # Display scores (you can integrate this into the UI as needed)
-            for score in scores:
-                print(f"Player: {score[0]}, Runs: {score[1]}, Balls: {score[2]}, Wickets: {score[3]}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load scores: {e}")
-        player_index = [f"{player[1]} ({player[2]})" for player in players].index(player)
-        player_id = players[player_index][0]
-
-        conn = sqlite3.connect('tournament_manager.db')
-        cursor = conn.cursor()
-
-        cursor.execute("INSERT INTO scores (match_id, player_id, runs, wickets) VALUES (?, ?, ?, ?)", (match_id, player_id, runs, wickets))
-        conn.commit()
-        conn.close()
-
-        messagebox.showinfo("Success", "Score updated successfully!")
-        self.update_scorecard_display(match_id)
-
-    def update_scorecard_display(self, match_id):
-        self.scorecard_text.delete(1.0, tk.END)
-
-        conn = sqlite3.connect('tournament_manager.db')
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        SELECT players.name, scores.runs, scores.balls, scores.wickets 
-        FROM scores 
-        JOIN players ON scores.player_id = players.id 
-        WHERE scores.match_id = ?
-        """, (match_id,))
-        scores = cursor.fetchall()
-        conn.close()
-
-        # Display scorecard
-        for score in scores:
-            self.scorecard_text.insert(tk.END, f"Player: {score[0]} Runs: {score[1]} Balls: {score[2]} Wickets: {score[3]}\n")
-
-    def view_scores(self, match_id):
-        """
-        View scores for a specific match.
-
-        Args:
-            match_id (int): ID of the match.
-        """
-        try:
-            conn = sqlite3.connect('tournament_manager.db')
-            cursor = conn.cursor()
-
-            cursor.execute("""
-            SELECT players.name, scores.runs, scores.balls, scores.wickets
-            FROM scores
-            JOIN players ON scores.player_id = players.id
-            WHERE scores.match_id = ?
-            """, (match_id,))
-            scores = cursor.fetchall()
-
-            conn.close()
-
-            # Display scores (you can integrate this into the UI as needed)
-            for score in scores:
-                print(f"Player: {score[0]}, Runs: {score[1]}, Balls: {score[2]}, Wickets: {score[3]}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load scores: {e}")
 
 
 if __name__ == "__main__":
