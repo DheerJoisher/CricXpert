@@ -289,6 +289,9 @@ class TournamentManagerApp:
         scoring_window = tk.Toplevel(match_window)
         scoring_window.title(f"Scoring Panel: {selected_match}")
 
+        # Initialize toss_winner_combobox before using it
+        self.toss_winner_combobox = tk.StringVar()  # Initialize the combobox variable
+
         # Display live score
         self.team1_score = 0
         self.team2_score = 0
@@ -302,7 +305,6 @@ class TournamentManagerApp:
         tk.Label(scoring_window, text="Select Toss Winner:").pack(pady=5)
 
         # Dropdown for toss winner
-        self.toss_winner_combobox = tk.StringVar()
         teams = [matches[match_index][1], matches[match_index][2]]
         toss_winner_dropdown = tk.OptionMenu(scoring_window, self.toss_winner_combobox, *teams)
         toss_winner_dropdown.pack(pady=5)
@@ -370,9 +372,15 @@ class TournamentManagerApp:
         conn.close()
 
         if toss_details and toss_details[0]:
+            # Reopen the connection and fetch toss details
+            conn = sqlite3.connect('tournament_manager.db')
+            cursor = conn.cursor()
             cursor.execute("SELECT name FROM teams WHERE id = ?", (toss_details[0],))
             toss_winner_team_name = cursor.fetchone()[0]
+            conn.close()
+
             tk.Label(scoring_window, text=f"Toss Winner: {toss_winner_team_name}, Elected to {toss_details[1]}").pack(pady=5)
+
 
     def save_toss_details(self, match_id):
         toss_winner = self.toss_winner_combobox.get()
@@ -393,29 +401,43 @@ class TournamentManagerApp:
         conn.close()
 
         messagebox.showinfo("Success", "Toss details saved successfully!")
+        def update_score(self, match_id, players):
+            player_name = self.player_combobox.get()
+            runs = self.runs_entry.get()
+            wickets = self.wickets_entry.get()
 
-    def update_score(self, match_id, players):
-        player = self.player_combobox.get()
-        runs = self.runs_entry.get()
-        wickets = self.wickets_entry.get()
+            if not player_name or not runs or not wickets:
+                messagebox.showerror("Error", "Please fill all fields!")
+                return
 
-        if not player or not runs or not wickets:
-            messagebox.showerror("Error", "Please fill all fields!")
-            return
+            # Find player ID
+            player_index = [f"{player[1]} ({player[2]})" for player in players].index(player_name)
+            player_id = players[player_index][0]
 
-        # Find player ID
-        player_index = [f"{player[1]} ({player[2]})" for player in players].index(player)
-        player_id = players[player_index][0]
+            conn = sqlite3.connect('tournament_manager.db')
+            cursor = conn.cursor()
 
-        conn = sqlite3.connect('tournament_manager.db')
-        cursor = conn.cursor()
+            # Insert the score data into the database
+            cursor.execute("INSERT INTO scores (match_id, player_id, runs, wickets) VALUES (?, ?, ?, ?)", 
+                           (match_id, player_id, int(runs), int(wickets)))
+            conn.commit()
 
-        cursor.execute("INSERT INTO scores (match_id, player_id, runs, wickets) VALUES (?, ?, ?, ?)", (match_id, player_id, runs, wickets))
-        conn.commit()
-        conn.close()
+            # Update team total scores
+            cursor.execute("""
+            UPDATE teams 
+            SET total_runs = (SELECT SUM(runs) FROM scores WHERE match_id = ? AND player_id IN 
+                              (SELECT id FROM players WHERE team_id IN (SELECT id FROM teams WHERE match_id = ?)))
+            WHERE id = ?
+            """, (match_id, match_id, team_id))
 
-        messagebox.showinfo("Success", "Score updated successfully!")
-        self.update_scorecard_display(match_id)
+            conn.commit()
+            conn.close()
+
+            # Refresh the scorecard display
+            self.update_scorecard_display(match_id)
+
+            messagebox.showinfo("Success", "Score updated successfully!")
+
 
     def update_scorecard_display(self, match_id):
         self.scorecard_text.delete(1.0, tk.END)
@@ -424,17 +446,18 @@ class TournamentManagerApp:
         cursor = conn.cursor()
 
         cursor.execute("""
-        SELECT players.name, scores.runs, scores.balls, scores.wickets 
-        FROM scores 
-        JOIN players ON scores.player_id = players.id 
+        SELECT players.name, scores.runs, scores.balls, scores.wickets
+        FROM scores
+        JOIN players ON scores.player_id = players.id
         WHERE scores.match_id = ?
         """, (match_id,))
         scores = cursor.fetchall()
         conn.close()
 
-        # Display scorecard
+        # Display the scorecard for each player
         for score in scores:
             self.scorecard_text.insert(tk.END, f"Player: {score[0]} Runs: {score[1]} Balls: {score[2]} Wickets: {score[3]}\n")
+
 
     def view_scores(self, match_id):
         """

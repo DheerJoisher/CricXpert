@@ -1,4 +1,3 @@
-# database.py
 import sqlite3
 
 def create_db():
@@ -6,7 +5,7 @@ def create_db():
     cursor = conn.cursor()
 
     # Create tournaments table
-    cursor.execute('''
+    cursor.execute(''' 
         CREATE TABLE IF NOT EXISTS tournaments (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
@@ -15,7 +14,7 @@ def create_db():
     ''')
 
     # Create teams table
-    cursor.execute('''
+    cursor.execute(''' 
         CREATE TABLE IF NOT EXISTS teams (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
@@ -25,7 +24,7 @@ def create_db():
     ''')
 
     # Create players table
-    cursor.execute('''
+    cursor.execute(''' 
         CREATE TABLE IF NOT EXISTS players (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
@@ -34,8 +33,8 @@ def create_db():
         )
     ''')
 
-    # Create matches table
-    cursor.execute('''
+    # Create matches table with added toss columns
+    cursor.execute(''' 
         CREATE TABLE IF NOT EXISTS matches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             team1_id INTEGER,
@@ -44,14 +43,17 @@ def create_db():
             score_team1 INTEGER,
             score_team2 INTEGER,
             tournament_id INTEGER,
+            toss_winner_team_id INTEGER,  -- New column to store toss winner team
+            toss_decision TEXT,           -- New column to store toss decision (bat/bowl)
             FOREIGN KEY (team1_id) REFERENCES teams(id),
             FOREIGN KEY (team2_id) REFERENCES teams(id),
-            FOREIGN KEY (tournament_id) REFERENCES tournaments(id)
+            FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+            FOREIGN KEY (toss_winner_team_id) REFERENCES teams(id)  -- Foreign key relation to teams
         )
     ''')
 
     # Create score table
-    cursor.execute('''
+    cursor.execute(''' 
         CREATE TABLE IF NOT EXISTS score (
             id INTEGER PRIMARY KEY,
             match_id INTEGER,
@@ -64,7 +66,7 @@ def create_db():
     ''')
 
     # Create scores table
-    cursor.execute('''
+    cursor.execute(''' 
         CREATE TABLE IF NOT EXISTS scores (
             match_id INTEGER NOT NULL,
             player_id INTEGER NOT NULL,
@@ -78,7 +80,7 @@ def create_db():
     ''')
 
     # Create Overs table
-    cursor.execute('''
+    cursor.execute(''' 
         CREATE TABLE IF NOT EXISTS overs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             match_id INTEGER NOT NULL,
