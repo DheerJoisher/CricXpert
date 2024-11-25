@@ -2,13 +2,11 @@ import tkinter as tk
 from tkcalendar import Calendar
 from tkinter import simpledialog, messagebox
 import sqlite3
-from database import create_db
-
 
 class TournamentManagerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Cricket Tournament Manager")
+        self.root.title("Tournament Manager")
         self.root.geometry("600x400")
 
         # Create the database if not exists
@@ -76,12 +74,16 @@ class TournamentManagerApp:
         self.manage_players_button.pack(pady=10)
 
         # Button to schedule a match
-        self.schedule_match_button = tk.Button(new_window, text="Schedule Match", command=lambda: self.schedule_match(new_window, tournament_name))
+        self.schedule_match_button = tk.Button(new_window, text="Schedule Match and Enter Result", command=lambda: self.schedule_match(new_window, tournament_name))
         self.schedule_match_button.pack(pady=10)
 
-        # Button to manage scores
-        self.manage_scores_button = tk.Button(new_window, text="Manage Scores", command=lambda: self.manage_scores(new_window, tournament_name))
-        self.manage_scores_button.pack(pady=10)
+        # Button to view scheduled matches
+        self.view_matches_button = tk.Button(new_window, text="View Matches", command=lambda: self.view_matches(tournament_name))
+        self.view_matches_button.pack(pady=10)
+
+        # Button to view points table
+        self.points_table_button = tk.Button(new_window, text="View Points Table", command=lambda: self.view_points_table(tournament_name))
+        self.points_table_button.pack(pady=10)
 
     def add_team(self, window, tournament_name):
         team_name = simpledialog.askstring("Team Name", "Enter the name of the team:")
@@ -92,7 +94,7 @@ class TournamentManagerApp:
             cursor.execute("SELECT id FROM tournaments WHERE name = ?", (tournament_name,))
             tournament_id = cursor.fetchone()[0]
 
-            cursor.execute("INSERT INTO teams (name, tournament_id) VALUES (?, ?)", (team_name, tournament_id))
+            cursor.execute("INSERT INTO teams (name, tournament_id, points) VALUES (?, ?, ?)", (team_name, tournament_id, 0))
             conn.commit()
             conn.close()
 
@@ -182,7 +184,7 @@ class TournamentManagerApp:
 
         team1_dropdown = tk.OptionMenu(schedule_window, self.team1_combobox, *[team[1] for team in teams])
         team1_dropdown.pack(pady=10)
-        
+
         team2_dropdown = tk.OptionMenu(schedule_window, self.team2_combobox, *[team[1] for team in teams])
         team2_dropdown.pack(pady=10)
 
@@ -198,26 +200,24 @@ class TournamentManagerApp:
         self.match_time_entry.insert(0, "HH:MM")
 
         # Button to save the match
-        self.schedule_button = tk.Button(
-            schedule_window,
-            text="Schedule Match",
-            command=lambda: self.save_match(tournament_name)
-        )
+        self.schedule_button = tk.Button(schedule_window, text="Enter Result", command=lambda: self.save_match(tournament_name, schedule_window))
         self.schedule_button.pack(pady=10)
 
-    def save_match(self, tournament_name):
-        """
-        Saves the match schedule to the database.
 
-        Args:
-            tournament_name (str): Name of the tournament.
-        """
-        team1 = self.team1_combobox.get()
-        team2 = self.team2_combobox.get()
+
+    def save_and_refresh_match(self, tournament_name, schedule_window):
+        # Save match and then refresh the matches list
+        self.save_match(tournament_name)
+        self.view_matches(tournament_name)  # Refresh the list of matches after saving
+        schedule_window.destroy()  # Close the scheduling window
+
+    def save_match(self, tournament_name, schedule_window):
+        team1_name = self.team1_combobox.get()
+        team2_name = self.team2_combobox.get()
         match_date = self.match_date_calendar.get_date()
         match_time = self.match_time_entry.get()
 
-        if not team1 or not team2 or not match_date or not match_time:
+        if not team1_name or not team2_name or not match_date or not match_time:
             messagebox.showerror("Error", "Please fill all fields!")
             return
 
@@ -229,10 +229,10 @@ class TournamentManagerApp:
         tournament_id = cursor.fetchone()[0]
 
         # Get team IDs
-        cursor.execute("SELECT id FROM teams WHERE name = ? AND tournament_id = ?", (team1, tournament_id))
+        cursor.execute("SELECT id FROM teams WHERE name = ? AND tournament_id = ?", (team1_name, tournament_id))
         team1_id = cursor.fetchone()[0]
 
-        cursor.execute("SELECT id FROM teams WHERE name = ? AND tournament_id = ?", (team2, tournament_id))
+        cursor.execute("SELECT id FROM teams WHERE name = ? AND tournament_id = ?", (team2_name, tournament_id))
         team2_id = cursor.fetchone()[0]
 
         # Combine date and time for match schedule
@@ -247,200 +247,204 @@ class TournamentManagerApp:
         conn.commit()
         conn.close()
 
-        messagebox.showinfo("Success", f"Match scheduled between {team1} and {team2} on {match_datetime}!")
+        messagebox.showinfo("Success", f"Match scheduled between {team1_name} and {team2_name} on {match_datetime}!")
 
-    def manage_scores(self, window, tournament_name):
-        # Create a new window to manage scores
-        score_window = tk.Toplevel(window)
-        score_window.title(f"Manage Scores for {tournament_name}")
+        # Now you can call the result input method and pass the necessary details
+        self.show_match_result_input(tournament_name, schedule_window, team1_id, team2_id, match_datetime)
 
-        # Load matches to choose from
+
+    def view_matches(self, tournament_name):
+        # Retrieve scheduled matches from the database
         conn = sqlite3.connect('tournament_manager.db')
         cursor = conn.cursor()
+
+        # Query to fetch match details for the selected tournament
         cursor.execute("""
-        SELECT matches.id, team1.name, team2.name, matches.date
-        FROM matches
-        JOIN teams AS team1 ON matches.team1_id = team1.id
-        JOIN teams AS team2 ON matches.team2_id = team2.id
-        WHERE matches.tournament_id = (SELECT id FROM tournaments WHERE name = ?)
+        SELECT t1.name AS team1_name, t2.name AS team2_name, m.date 
+        FROM matches m
+        JOIN teams t1 ON m.team1_id = t1.id
+        JOIN teams t2 ON m.team2_id = t2.id
+        WHERE m.tournament_id = (SELECT id FROM tournaments WHERE name = ?)
         """, (tournament_name,))
+
         matches = cursor.fetchall()
         conn.close()
 
-        self.match_combobox = tk.StringVar()
-        match_dropdown = tk.OptionMenu(score_window, self.match_combobox, *[f"{match[1]} vs {match[2]} on {match[3]}" for match in matches])
-        match_dropdown.pack(pady=10)
+        # Create a new window to display the scheduled matches
+        match_window = tk.Toplevel(self.root)
+        match_window.title(f"Scheduled Matches for {tournament_name}")
 
-        # Button to open scoring panel
-        self.open_scoring_panel_button = tk.Button(score_window, text="Open Scoring Panel", command=lambda: self.open_scoring_panel(score_window, matches))
-        self.open_scoring_panel_button.pack(pady=10)
-
-    def open_scoring_panel(self, match_window, matches):
-        selected_match = self.match_combobox.get()
-        if not selected_match:
-            messagebox.showerror("Error", "Please select a match!")
+        # Check if there are no scheduled matches
+        if not matches:
+            tk.Label(match_window, text="No matches scheduled yet.").pack(pady=20)
             return
 
-        # Find selected match ID
-        match_index = [f"{match[1]} vs {match[2]} on {match[3]}" for match in matches].index(selected_match)
-        match_id = matches[match_index][0]
+        # Display the matches
+        for match in matches:
+            team1_name = match[0]
+            team2_name = match[1]
+            match_date = match[2]
 
-        # Create scoring panel window
-        scoring_window = tk.Toplevel(match_window)
-        scoring_window.title(f"Scoring Panel: {selected_match}")
-        scoring_window.geometry("600x600")  # Set window size
+            # Format the date and time to a more readable format
+            formatted_date = match_date.replace("T", " at ")
 
-        # Initialize toss_winner_combobox before using it
-        self.toss_winner_combobox = tk.StringVar()
+            # Display match info
+            match_info = f"{team1_name} vs {team2_name} on {formatted_date}"
+            tk.Label(match_window, text=match_info).pack(pady=5)
 
-        # Display live score
-        self.team1_score = 0
-        self.team2_score = 0
-        self.current_overs = 0
-        self.current_balls = 0
+    def view_points_table(self, tournament_name):
+        conn = sqlite3.connect('tournament_manager.db')
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT name, points FROM teams
+        WHERE tournament_id = (SELECT id FROM tournaments WHERE name = ?)
+        ORDER BY points DESC
+        """, (tournament_name,))
+        points = cursor.fetchall()
+        conn.close()
 
-        score_frame = tk.Frame(scoring_window)
-        score_frame.pack(pady=10)
+        points_window = tk.Toplevel(self.root)
+        points_window.title(f"Points Table for {tournament_name}")
 
-        self.score_label = tk.Label(score_frame, text="Score: 0/0 Overs: 0.0", font=("Arial", 16))
-        self.score_label.pack()
+        for team, points in points:
+            tk.Label(points_window, text=f"{team}: {points} points").pack()
 
-        # Toss Section
-        toss_frame = tk.Frame(scoring_window)
-        toss_frame.pack(pady=10, fill=tk.X)
+    def update_points(self, team1_id, team2_id, result):
+        conn = sqlite3.connect('tournament_manager.db')
+        cursor = conn.cursor()
 
-        tk.Label(toss_frame, text="Select Toss Winner:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
+        if result == 'team1':
+            # Team 1 wins, update Team 1 points
+            cursor.execute("UPDATE teams SET points = points + 2 WHERE id = ?", (team1_id,))
+            cursor.execute("UPDATE teams SET points = points WHERE id = ?", (team2_id,))  # Team 2 gets 0 points
+        elif result == 'team2':
+            # Team 2 wins, update Team 2 points
+            cursor.execute("UPDATE teams SET points = points + 2 WHERE id = ?", (team2_id,))
+            cursor.execute("UPDATE teams SET points = points WHERE id = ?", (team1_id,))  # Team 1 gets 0 points
+        else:
+            # Draw, both teams get 1 point
+            cursor.execute("UPDATE teams SET points = points + 1 WHERE id = ?", (team1_id,))
+            cursor.execute("UPDATE teams SET points = points + 1 WHERE id = ?", (team2_id,))
 
-        teams = [matches[match_index][1], matches[match_index][2]]
-        toss_winner_dropdown = tk.OptionMenu(toss_frame, self.toss_winner_combobox, *teams)
-        toss_winner_dropdown.pack(side=tk.LEFT, padx=5)
+        conn.commit()
+        conn.close()
 
-        self.toss_decision = tk.StringVar()
-        tk.Label(toss_frame, text="Decision:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
-        tk.Radiobutton(toss_frame, text="Bat", variable=self.toss_decision, value="Bat").pack(side=tk.LEFT)
-        tk.Radiobutton(toss_frame, text="Bowl", variable=self.toss_decision, value="Bowl").pack(side=tk.LEFT)
+        # Reload the points table
+        self.load_points_table()
 
-        tk.Button(
-            toss_frame, text="Save Toss Details",
-            command=lambda: self.save_toss_details(match_id),
-            bg="green", fg="white"
-        ).pack(side=tk.LEFT, padx=10)
+    def show_match_result_input(self, tournament_name, schedule_window, team1_id, team2_id, match_datetime):
+        result_window = tk.Toplevel(schedule_window)
+        result_window.title("Enter Match Result")
 
-        # Player and Score Input Section
-        input_frame = tk.Frame(scoring_window)
-        input_frame.pack(pady=10, fill=tk.X)
+        # Dropdown to select the result
+        result_var = tk.StringVar()
+        result_var.set("draw")  # Default to draw
 
-        tk.Label(input_frame, text="Select Player:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
+        result_label = tk.Label(result_window, text="Select Match Result:")
+        result_label.pack(pady=10)
+
+        result_dropdown = tk.OptionMenu(result_window, result_var, "team1", "team2", "draw")
+        result_dropdown.pack(pady=10)
+
+        # Button to save the result
+        save_button = tk.Button(result_window, text="Save Result", command=lambda: self.save_match_result(tournament_name, team1_id, team2_id, result_var.get(), match_datetime))
+        save_button.pack(pady=10)
+
+
+    def save_match_result(self, tournament_name, team1_id, team2_id, result, match_datetime):
+        conn = sqlite3.connect('tournament_manager.db')
+        cursor = conn.cursor()
+
+        if result == "team1":
+            cursor.execute("UPDATE teams SET points = points + 2 WHERE id = ?", (team1_id,))
+            cursor.execute("UPDATE teams SET points = points WHERE id = ?", (team2_id,))  # Team 2 gets 0 points
+        elif result == "team2":
+            cursor.execute("UPDATE teams SET points = points + 2 WHERE id = ?", (team2_id,))
+            cursor.execute("UPDATE teams SET points = points WHERE id = ?", (team1_id,))  # Team 1 gets 0 points
+        else:
+            # Draw, both teams get 1 point
+            cursor.execute("UPDATE teams SET points = points + 1 WHERE id = ?", (team1_id,))
+            cursor.execute("UPDATE teams SET points = points + 1 WHERE id = ?", (team2_id,))
+
+        conn.commit()
+        conn.close()
+
+        # Reload the points table
+        self.load_points_table()
+
+        # Notify the user
+        messagebox.showinfo("Success", "Match result updated successfully!")
+
+
+    def load_points_table(self):
+        # Clear the points table list
+        self.points_table_list.delete(0, tk.END)
 
         conn = sqlite3.connect('tournament_manager.db')
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT players.id, players.name, teams.name 
-            FROM players 
-            JOIN teams ON players.team_id = teams.id
-            WHERE teams.id IN (
-                SELECT team1_id FROM matches WHERE id = ?
-                UNION
-                SELECT team2_id FROM matches WHERE id = ?
-            )
-        """, (match_id, match_id))
-        players = cursor.fetchall()
+            SELECT teams.name, teams.points 
+            FROM teams
+            JOIN tournaments ON teams.tournament_id = tournaments.id
+            WHERE tournaments.name = ?
+            ORDER BY teams.points DESC
+        """, (self.selected_tournament_name,))
+        teams = cursor.fetchall()
         conn.close()
 
-        self.player_combobox = tk.StringVar()
-        player_dropdown = tk.OptionMenu(input_frame, self.player_combobox, *[f"{player[1]} ({player[2]})" for player in players])
-        player_dropdown.pack(side=tk.LEFT, padx=5)
+        for team in teams:
+            self.points_table_list.insert(tk.END, f"{team[0]} - {team[1]} points")
 
-        # Input for runs, wickets, extras
-        runs_frame = tk.Frame(scoring_window)
-        runs_frame.pack(pady=5, fill=tk.X)
+# Database setup
+def create_db():
+    conn = sqlite3.connect('tournament_manager.db')
+    cursor = conn.cursor()
 
-        tk.Label(runs_frame, text="Runs:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
-        self.runs_entry = tk.Entry(runs_frame, width=5)
-        self.runs_entry.pack(side=tk.LEFT, padx=5)
+    # Create tournaments table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS tournaments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        date_created TEXT NOT NULL
+    )
+    """)
 
-        tk.Label(runs_frame, text="Wickets:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
-        self.wickets_entry = tk.Entry(runs_frame, width=5)
-        self.wickets_entry.pack(side=tk.LEFT, padx=5)
+    # Create teams table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS teams (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        tournament_id INTEGER NOT NULL,
+        points INTEGER DEFAULT 0,
+        FOREIGN KEY(tournament_id) REFERENCES tournaments(id)
+    )
+    """)
 
-        tk.Label(runs_frame, text="Extras:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
-        self.extras_entry = tk.Entry(runs_frame, width=5)
-        self.extras_entry.pack(side=tk.LEFT, padx=5)
+    # Create players table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS players (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        team_id INTEGER NOT NULL,
+        FOREIGN KEY(team_id) REFERENCES teams(id)
+    )
+    """)
 
-        # Buttons to update scores
-        action_frame = tk.Frame(scoring_window)
-        action_frame.pack(pady=10, fill=tk.X)
-
-        tk.Button(action_frame, text="Update Runs", command=lambda: self.update_score(match_id, players, "runs"), bg="blue", fg="white").pack(side=tk.LEFT, padx=10)
-        tk.Button(action_frame, text="Update Wickets", command=lambda: self.update_score(match_id, players, "wickets"), bg="red", fg="white").pack(side=tk.LEFT, padx=10)
-        tk.Button(action_frame, text="Add Extras", command=lambda: self.update_score(match_id, players, "extras"), bg="orange", fg="black").pack(side=tk.LEFT, padx=10)
-
-        # Live scorecard display
-        scorecard_frame = tk.Frame(scoring_window)
-        scorecard_frame.pack(pady=10, fill=tk.BOTH, expand=True)
-
-        tk.Label(scorecard_frame, text="Live Scorecard:", font=("Arial", 14)).pack(pady=5)
-
-        self.scorecard_text = tk.Text(scorecard_frame, height=15, width=60)
-        self.scorecard_text.pack(pady=10)
-
-        self.update_scorecard_display(match_id)
-    
-        def update_scorecard_display(self, match_id):
-            """
-            Update the scorecard display for the given match.
-            """
-            conn = sqlite3.connect('tournament_manager.db')
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT players.name, score_details.runs, score_details.wickets, score_details.extras
-                FROM score_details
-                JOIN players ON score_details.player_id = players.id
-                WHERE score_details.match_id = ?
-            """, (match_id,))
-            score_details = cursor.fetchall()
-            conn.close()
-    
-            self.scorecard_text.delete(1.0, tk.END)
-            for detail in score_details:
-                self.scorecard_text.insert(tk.END, f"{detail[0]} - Runs: {detail[1]}, Wickets: {detail[2]}, Extras: {detail[3]}\n")
-
-    def update_score(self, match_id, players, update_type):
-        """
-        Update the score for the match based on input type (runs, wickets, or extras).
-        """
-        try:
-            if update_type == "runs":
-                runs = int(self.runs_entry.get())
-                self.team1_score += runs
-                self.scorecard_text.insert(tk.END, f"Updated {runs} runs for {self.player_combobox.get()}.\n")
-            elif update_type == "wickets":
-                wickets = int(self.wickets_entry.get())
-                self.scorecard_text.insert(tk.END, f"Recorded {wickets} wickets for {self.player_combobox.get()}.\n")
-            elif update_type == "extras":
-                extras = int(self.extras_entry.get())
-                self.team1_score += extras
-                self.scorecard_text.insert(tk.END, f"Added {extras} extras.\n")
-
-            # Update overs
-            self.current_balls += 1
-            if self.current_balls == 6:
-                self.current_overs += 1
-                self.current_balls = 0
-
-            # Update the score display
-            self.score_label.config(text=f"Score: {self.team1_score}/{self.current_overs}.{self.current_balls}")
-            self.update_scorecard_display(match_id)
-
-        except ValueError:
-            messagebox.showerror("Error", "Invalid input! Please enter numeric values.")
-
-        # Clear input fields
-        self.runs_entry.delete(0, tk.END)
-        self.wickets_entry.delete(0, tk.END)
-        self.extras_entry.delete(0, tk.END)
-
-
+    # Create matches table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS matches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        team1_id INTEGER NOT NULL,
+        team2_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        tournament_id INTEGER NOT NULL,
+        FOREIGN KEY(team1_id) REFERENCES teams(id),
+        FOREIGN KEY(team2_id) REFERENCES teams(id),
+        FOREIGN KEY(tournament_id) REFERENCES tournaments(id)
+    )
+    """)
+    conn.commit()
+    conn.close()
 
 if __name__ == "__main__":
     root = tk.Tk()
